@@ -1,0 +1,29 @@
+================================================================
+  Gestão de Chamados — AUTOMAÇÕES CONSOLIDADAS
+  CRN GROUP — WhatsApp + Drive + PDF + Excel + Relatórios
+================================================================
+App: https://appmanutencaogit-xp3czwrvazfigblbmjwjr2.streamlit.app
+
+Leia também: AUTOMACOES.md (mapa completo das automações)
+             REVISAO.md   (estado técnico)
+
+INSTALAÇÃO
+----------
+1. Extraia esta pasta.
+2. Copie seu banco_chamados.db (se já existir).
+3. pip install -r requirements.txt
+4. .streamlit/secrets.toml.example → secrets.toml (preencha)
+5. streamlit run app.py
+
+MÓDULOS DE AUTOMAÇÃO
+--------------------
+  whatsapp_api.py / integracoes.py   → aviso WhatsApp na conclusão
+  google_midia.py + apps_script_*.gs → fotos no Google Drive
+  gerar_relatorio_preventiva.py      → PDF preventiva automático
+  exportar_excel.py                  → exportações .xlsx
+  relatorios_gestao.py               → MTTR, FTFR, backlog, produtividade
+  relatorios_indices.py              → views e índices de gestão
+  notificacoes.py                    → alertas no app
+  schema_gestao_melhorado.sql        → índices + views SQL
+
+Não inclui secrets reais nem banco de produção.
