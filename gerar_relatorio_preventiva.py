@@ -417,28 +417,10 @@ def label_tipo_equipamento(nome: str | None) -> str:
 
 
 def _safe(val: Any, default: str = "") -> str:
-    """Converte qualquer valor para texto seguro (None, NaN, float → string)."""
     if val is None:
         return default
-    try:
-        if isinstance(val, float):
-            import math
-
-            if math.isnan(val) or math.isinf(val):
-                return default
-        try:
-            import pandas as pd
-
-            if pd.isna(val):
-                return default
-        except Exception:
-            pass
-    except Exception:
-        pass
     s = str(val).strip()
-    if not s or s.lower() in ("nan", "none", "null"):
-        return default
-    return s
+    return s if s else default
 
 
 def _parse_data(data_str: str | None) -> datetime:
@@ -573,18 +555,17 @@ def gerar_pdf_preventiva(
 
     # checklist a partir do registro ou parâmetros
     ck_from_reg: dict = {}
-    obs_extra = _safe(observacoes_gerais)
     if manutencao:
         data_man = _parse_data(manutencao.get("data_manutencao"))
         executante = _safe(manutencao.get("executante"))
-        obs = _safe(manutencao.get("observacao")) or _safe(manutencao.get("descricao"))
-        if obs_extra:
-            obs = (obs + "\n" + obs_extra).strip() if obs else obs_extra
+        obs = _safe(manutencao.get("observacao") or manutencao.get("descricao"))
+        if observacoes_gerais:
+            obs = (obs + "\n" + observacoes_gerais).strip() if obs else observacoes_gerais
         ck_from_reg = parse_checklist_json(manutencao.get("checklist_json"))
     else:
         data_man = datetime.now()
         executante = ""
-        obs = obs_extra
+        obs = observacoes_gerais
 
     # merge: checklist_data > overrides/obs > registro > padrão do tipo
     resolved: dict[str, dict] = {}

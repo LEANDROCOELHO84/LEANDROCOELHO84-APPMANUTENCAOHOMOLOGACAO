@@ -2450,24 +2450,7 @@ def carregar_equipamentos() -> list[dict]:
         df = _ler_sql_com_fallback("SELECT * FROM equipamentos")
         if df.empty:
             return []
-        rows = df.where(pd.notnull(df), None).to_dict(orient="records")
-        # Remove duplicatas por id (mantém o primeiro) e, sem id, por nome+patrimônio
-        vistos = set()
-        unicos = []
-        for eq in rows:
-            eid = eq.get("id")
-            if eid is not None:
-                chave = f"id:{eid}"
-            else:
-                chave = (
-                    f"n:{str(eq.get('nome') or '').strip().lower()}|"
-                    f"p:{str(eq.get('numero_patrimonio') or eq.get('patrimonio') or '').strip()}"
-                )
-            if chave in vistos:
-                continue
-            vistos.add(chave)
-            unicos.append(eq)
-        return unicos
+        return df.where(pd.notnull(df), None).to_dict(orient="records")
     except Exception as e:
         log_error("carregar_equipamentos falhou", e)
         return []

@@ -282,12 +282,10 @@ def _safe_float(v, default: float = 0.0) -> float:
 def formatar_duracao_minutos(minutos, *, absoluto: bool = True) -> str:
     """
     Formata duração a partir de minutos (todas as abas):
-    < 60 min → "X min"
-    < 24 h → "X h Y min"
-    < 7 d → "X d Y h"
-    < 30 d → "X sem Y d"
-    < 365 d → "X mês/meses Y d"
-    ≥ 365 d → "X ano(s) Y mês(es)"
+    < 60 → "X min"
+    ≥ 60 → horas + minutos
+    ≥ 24 h → dias + horas + minutos
+    Ex.: "2 d 5 h 12 min"
     absoluto=True: ignora sinal (sempre positivo).
     """
     try:
@@ -302,36 +300,18 @@ def formatar_duracao_minutos(minutos, *, absoluto: bool = True) -> str:
         total = int(abs(val) if absoluto else max(0, val))
     except (TypeError, ValueError, OverflowError):
         return "—"
-
     if total < 60:
         return f"{total} min"
-
-    if total < 24 * 60:
-        horas, mins = divmod(total, 60)
-        return f"{horas} h {mins} min" if mins else f"{horas} h"
-
-    dias_tot = total // (24 * 60)
-    horas = (total % (24 * 60)) // 60
-
-    if dias_tot < 7:
-        return f"{dias_tot} d {horas} h" if horas else f"{dias_tot} d"
-
-    if dias_tot < 30:
-        sem, d = divmod(dias_tot, 7)
-        return f"{sem} sem {d} d" if d else f"{sem} sem"
-
-    if dias_tot < 365:
-        meses, d = divmod(dias_tot, 30)
-        rot_m = "mês" if meses == 1 else "meses"
-        return f"{meses} {rot_m} {d} d" if d else f"{meses} {rot_m}"
-
-    anos, resto_d = divmod(dias_tot, 365)
-    meses = resto_d // 30
-    rot_a = "ano" if anos == 1 else "anos"
-    if meses:
-        rot_m = "mês" if meses == 1 else "meses"
-        return f"{anos} {rot_a} {meses} {rot_m}"
-    return f"{anos} {rot_a}"
+    dias, resto = divmod(total, 24 * 60)
+    horas, mins = divmod(resto, 60)
+    partes = []
+    if dias:
+        partes.append(f"{dias} d")
+    if horas:
+        partes.append(f"{horas} h")
+    if mins or not partes:
+        partes.append(f"{mins} min")
+    return " ".join(partes)
 
 
 def formatar_sla_restante(minutos) -> str:
@@ -463,107 +443,92 @@ ui_preferencias_notificacao()
 
 # ====================== USUÁRIO COMUM ======================
 if perfil == "👤 Usuário Comum":
-    header(
-        "Abertura de chamado",
-        "Descreva o problema e acompanhe o andamento na outra aba",
-        icon="👤",
-        nivel="secao",
-    )
     aba_novo, aba_historico = st.tabs(["🚀 Nova Solicitação", "📊 Histórico e Indicadores"])
 
     with aba_novo:
-        col_form, col_foto = st.columns([1.35, 1])
-        with col_foto:
-            with st.container(border=True):
-                st.markdown("##### 📸 Foto (opcional)")
-                st.caption("Ajuda a equipe a entender o problema mais rápido.")
-                foto_opcao = st.radio(
-                    "Como adicionar?",
-                    ["Sem foto", "Tirar foto agora", "Escolher da galeria"],
-                    horizontal=True,
-                    key="foto_novo",
-                    label_visibility="collapsed",
+        with st.container(border=True):
+            st.markdown("### 📸 Adicionar Foto (opcional)")
+            foto_opcao = st.radio(
+                "Como deseja adicionar a foto?",
+                ["Sem foto", "Tirar foto agora", "Escolher da galeria"],
+                horizontal=True,
+                key="foto_novo",
+            )
+            foto_path = None
+            if foto_opcao == "Tirar foto agora":
+                foto = st.camera_input("Capturar Foto", key="cam_novo")
+                if foto:
+                    foto_path = comprimir_imagem(foto, "abertura")
+            elif foto_opcao == "Escolher da galeria":
+                arquivo = st.file_uploader(
+                    "Selecione imagem", type=["jpg", "jpeg", "png"], key="up_novo"
                 )
-                foto_path = None
-                if foto_opcao == "Tirar foto agora":
-                    foto = st.camera_input("Capturar Foto", key="cam_novo")
-                    if foto:
-                        foto_path = comprimir_imagem(foto, "abertura")
-                elif foto_opcao == "Escolher da galeria":
-                    arquivo = st.file_uploader(
-                        "Selecione imagem", type=["jpg", "jpeg", "png"], key="up_novo"
-                    )
-                    if arquivo:
-                        foto_path = comprimir_imagem(arquivo, "abertura")
-                if foto_path:
-                    st.success("✅ Foto anexada")
+                if arquivo:
+                    foto_path = comprimir_imagem(arquivo, "abertura")
 
-        with col_form:
-            with st.form("novo_chamado", clear_on_submit=True):
-                st.markdown("##### 📝 Dados do chamado")
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    nome = st.text_input("Solicitante *", placeholder="Seu nome completo")
-                with c_b:
-                    contato_sol = st.text_input(
-                        "WhatsApp (opcional)",
-                        placeholder="(11) 99999-9999",
-                        help="Se preenchido, recebe aviso automático ao concluir a OS.",
-                    )
-                col1, col2 = st.columns(2)
-                with col1:
-                    setor = st.selectbox("Setor / Área *", st.session_state.setores)
-                with col2:
-                    eq_options = [
-                        nome_equipamento(eq) for eq in st.session_state.equipamentos
-                    ] + ["N/A"]
-                    equipamento = st.selectbox("Equipamento", eq_options)
-                prioridade = st.selectbox("Prioridade *", list(PRIORIDADES.keys()))
-                descricao = st.text_area("Descrição do Problema *", height=120)
+        with st.form("novo_chamado", clear_on_submit=True):
+            st.markdown("### 📝 Dados do chamado")
+            nome = st.text_input("Solicitante *", placeholder="Seu nome completo")
+            contato_sol = st.text_input(
+                "WhatsApp do solicitante",
+                placeholder="(11) 99999-9999 — para aviso automático ao concluir",
+                help="Opcional. Se preenchido, o solicitante recebe WhatsApp quando a OS for concluída.",
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                setor = st.selectbox("Setor / Área *", st.session_state.setores)
+            with col2:
+                eq_options = [nome_equipamento(eq) for eq in st.session_state.equipamentos] + [
+                    "N/A"
+                ]
+                equipamento = st.selectbox("Equipamento", eq_options)
+            prioridade = st.selectbox("Prioridade *", list(PRIORIDADES.keys()))
+            descricao = st.text_area("Descrição do Problema *", height=120)
 
-                if st.form_submit_button(
-                    "🚀 ENVIAR SOLICITAÇÃO", width="stretch", type="primary"
-                ):
-                    if nome and descricao and setor:
-                        novo_id = proximo_id_chamado()
-                        novo = {
-                            "id": novo_id,
-                            "solicitante": nome.strip(),
-                            "contato_solicitante": (contato_sol or "").strip(),
-                            "data_hora_abertura": datetime.now().isoformat(),
-                            "setor": setor,
-                            "equipamento": equipamento,
-                            "prioridade": prioridade,
-                            "descricao": descricao.strip(),
-                            "status": "Aberto",
-                            "executante": "",
-                            "data_hora_inicio": None,
-                            "data_hora_conclusao": None,
-                            "foto_path": foto_path,
-                            "solucao_descricao": "",
-                            "foto_solucao_path": None,
-                            "comentario_conclusao": "",
-                            "peca_solicitada": "",
-                            "peca_observacao": "",
-                            "data_solicitacao_peca": None,
-                        }
-                        if salvar_chamado(novo):
-                            st.session_state.chamados.append(novo)
-                            try:
-                                notificar(
-                                    f"🛎️ Novo chamado OS {novo_id}",
-                                    f"{prioridade} · {setor} · {nome.strip()}",
-                                    tag=f"novo-{novo_id}",
-                                )
-                            except Exception:
-                                pass
-                            agendar_efeito_concluido(
-                                f"✅ Chamado Nº {novo_id} aberto com sucesso!",
-                                celebrar=True,
+            if foto_path:
+                st.success("✅ Foto anexada com sucesso!")
+
+            if st.form_submit_button("🚀 ENVIAR SOLICITAÇÃO", width="stretch", type="primary"):
+                if nome and descricao and setor:
+                    novo_id = proximo_id_chamado()
+                    novo = {
+                        "id": novo_id,
+                        "solicitante": nome.strip(),
+                        "contato_solicitante": (contato_sol or "").strip(),
+                        "data_hora_abertura": datetime.now().isoformat(),
+                        "setor": setor,
+                        "equipamento": equipamento,
+                        "prioridade": prioridade,
+                        "descricao": descricao.strip(),
+                        "status": "Aberto",
+                        "executante": "",
+                        "data_hora_inicio": None,
+                        "data_hora_conclusao": None,
+                        "foto_path": foto_path,
+                        "solucao_descricao": "",
+                        "foto_solucao_path": None,
+                        "comentario_conclusao": "",
+                        "peca_solicitada": "",
+                        "peca_observacao": "",
+                        "data_solicitacao_peca": None,
+                    }
+                    if salvar_chamado(novo):
+                        st.session_state.chamados.append(novo)
+                        try:
+                            notificar(
+                                f"🛎️ Novo chamado OS {novo_id}",
+                                f"{prioridade} · {setor} · {nome.strip()}",
+                                tag=f"novo-{novo_id}",
                             )
-                            st.rerun()
-                    else:
-                        st.error("❌ Preencha os campos obrigatórios.")
+                        except Exception:
+                            pass
+                        agendar_efeito_concluido(
+                            f"✅ Chamado Nº {novo_id} aberto com sucesso!",
+                            celebrar=True,
+                        )
+                        st.rerun()
+                else:
+                    st.error("❌ Preencha os campos obrigatórios.")
 
     with aba_historico:
         header(
@@ -1085,20 +1050,9 @@ elif perfil == "🛠️ Equipe de Manutenção":
             row["nome"] for _, row in st.session_state.equipe.iterrows() if row.get("ativo") == 1
         ]
 
-        vistos_prev = set()
         for eq in st.session_state.equipamentos:
             if not eq.get("proxima_preventiva"):
                 continue
-            # Evita alerta duplicado (mesmo id ou mesmo patrimônio+nome)
-            eq_id = eq.get("id")
-            chave_dup = (
-                f"id:{eq_id}"
-                if eq_id is not None
-                else f"n:{eq.get('nome')}|p:{eq.get('patrimonio') or eq.get('numero_patrimonio')}"
-            )
-            if chave_dup in vistos_prev:
-                continue
-            vistos_prev.add(chave_dup)
             try:
                 # Respeita silenciar_ate (adiar alerta)
                 sil = eq.get("silenciar_ate")
@@ -1115,7 +1069,7 @@ elif perfil == "🛠️ Equipe de Manutenção":
                     alertas_lista.append(
                         {
                             "eq": eq,
-                            "id": eq_id,
+                            "id": eq.get("id"),
                             "nome": nome_equipamento(eq),
                             "setor": eq.get("setor") or "—",
                             "data": prox.strftime("%d/%m/%Y"),
@@ -1124,8 +1078,6 @@ elif perfil == "🛠️ Equipe de Manutenção":
                     )
             except Exception:
                 continue
-        # Ordena: mais urgentes primeiro
-        alertas_lista.sort(key=lambda a: (a["dias"], str(a.get("nome") or "")))
 
         # PDFs de preventiva gerados recentemente (persistem após rerun)
         if "_pdfs_preventiva_pendentes" not in st.session_state:
@@ -1167,70 +1119,21 @@ elif perfil == "🛠️ Equipe de Manutenção":
                 st.success("✅ Nenhum alerta preventivo nos próximos 30 dias.")
             else:
                 alertas_lista.sort(key=lambda x: x["dias"])
-                # ---- Filtros da lista de preventivas ----
-                setores_prev = sorted(
-                    {str(a.get("setor") or "—") for a in alertas_lista if a.get("setor")}
-                )
-                f1, f2, f3 = st.columns([2, 2, 2])
-                with f1:
-                    filtro_urgencia = st.multiselect(
-                        "Urgência",
-                        ["Fora do prazo", "Hoje / ≤ 7 dias", "8–30 dias"],
-                        default=["Fora do prazo", "Hoje / ≤ 7 dias", "8–30 dias"],
-                        key="filtro_prev_urgencia",
-                    )
-                with f2:
-                    filtro_setor_prev = st.multiselect(
-                        "Setor",
-                        setores_prev,
-                        default=[],
-                        placeholder="Todos os setores",
-                        key="filtro_prev_setor",
-                    )
-                with f3:
-                    busca_prev = st.text_input(
-                        "Buscar equipamento",
-                        placeholder="Nome ou patrimônio…",
-                        key="filtro_prev_busca",
-                    )
+                vencidos = sum(1 for a in alertas_lista if a["dias"] < 0)
+                urgentes = sum(1 for a in alertas_lista if 0 <= a["dias"] <= 7)
+                normais = len(alertas_lista) - vencidos - urgentes
 
-                def _passa_filtro_prev(a):
-                    d = a["dias"]
-                    if d < 0:
-                        faixa = "Fora do prazo"
-                    elif d <= 7:
-                        faixa = "Hoje / ≤ 7 dias"
-                    else:
-                        faixa = "8–30 dias"
-                    if filtro_urgencia and faixa not in filtro_urgencia:
-                        return False
-                    if filtro_setor_prev and str(a.get("setor") or "—") not in filtro_setor_prev:
-                        return False
-                    if busca_prev and busca_prev.strip():
-                        q = busca_prev.strip().lower()
-                        nome = str(a.get("nome") or "").lower()
-                        eq = a.get("eq") or {}
-                        patr = str(
-                            eq.get("numero_patrimonio") or eq.get("patrimonio") or ""
-                        ).lower()
-                        if q not in nome and q not in patr:
-                            return False
-                    return True
+                partes = [f"{len(alertas_lista)} alerta(s)"]
+                if vencidos:
+                    partes.append(f"🔴 {vencidos} fora do prazo")
+                if urgentes:
+                    partes.append(f"🟠 {urgentes} ≤ 7 dias")
+                if normais:
+                    partes.append(f"🟡 {normais} em até 30 dias")
 
-                filtrados = [a for a in alertas_lista if _passa_filtro_prev(a)]
-
-                vencidos = sum(1 for a in filtrados if a["dias"] < 0)
-                urgentes = sum(1 for a in filtrados if 0 <= a["dias"] <= 7)
-                normais = len(filtrados) - vencidos - urgentes
-
-                k1, k2, k3, k4 = st.columns(4)
-                k1.metric("Total filtrado", len(filtrados))
-                k2.metric("Fora do prazo", vencidos)
-                k3.metric("≤ 7 dias", urgentes)
-                k4.metric("8–30 dias", normais)
-
-                prioritarios = [a for a in filtrados if a["dias"] <= 7]
-                demais = [a for a in filtrados if a["dias"] > 7]
+                # Expander principal sempre fechado; só prioritários visíveis ao abrir
+                prioritarios = [a for a in alertas_lista if a["dias"] <= 7]
+                demais = [a for a in alertas_lista if a["dias"] > 7]
 
                 def _render_alerta_prev(a, idx, prefix):
                     eq_id = a["id"]
@@ -1272,19 +1175,18 @@ elif perfil == "🛠️ Equipe de Manutenção":
                         f"""
                         <div style="
                             display:flex; align-items:center; justify-content:space-between;
-                            gap:12px; padding:12px 14px; margin:8px 0 2px 0;
-                            border-radius:12px; border:1px solid #2e2e2e;
+                            gap:12px; padding:10px 14px; margin:6px 0 2px 0;
+                            border-radius:12px; border:1px solid #333;
                             border-left:4px solid {border};
-                            background:linear-gradient(145deg,#141414,#101010);
-                            box-shadow:0 4px 14px -10px rgba(0,0,0,0.7);
+                            background:#111111;
                         ">
                             <div style="flex:1; min-width:0;">
                                 <div style="font-weight:700; color:#f1f1f1; font-size:0.95rem;
                                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                     {a['nome']}
                                 </div>
-                                <div style="font-size:0.82rem; color:#a3a3a3; margin-top:3px;">
-                                    {a['setor']} · próxima {a['data']} · {prazo}
+                                <div style="font-size:0.82rem; color:#a3a3a3; margin-top:2px;">
+                                    {a['setor']} · {a['data']} · {prazo}
                                 </div>
                             </div>
                             <span class="badge" style="
@@ -1511,20 +1413,10 @@ elif perfil == "🛠️ Equipe de Manutenção":
                                 reload_data()
                                 st.rerun()
 
-                partes_exp = [f"{len(filtrados)} alerta(s)"]
-                if vencidos:
-                    partes_exp.append(f"🔴 {vencidos} fora do prazo")
-                if urgentes:
-                    partes_exp.append(f"🟠 {urgentes} ≤ 7 dias")
-                if normais:
-                    partes_exp.append(f"🟡 {normais} em até 30 dias")
-
                 with st.expander(
-                    f"⚠️ Manutenção Preventiva — {' · '.join(partes_exp)}",
-                    expanded=bool(prioritarios),
+                    f"⚠️ Manutenção Preventiva — {' · '.join(partes)}",
+                    expanded=False,
                 ):
-                    if not filtrados:
-                        st.info("Nenhum alerta com os filtros atuais.")
                     if prioritarios:
                         st.caption("Prioridade (hoje / fora do prazo / ≤ 7 dias)")
                         for idx, a in enumerate(prioritarios):
@@ -2079,9 +1971,6 @@ elif perfil == "🛠️ Equipe de Manutenção":
                 "↕️ Saídas / Baixas",
                 "⚡ Entrada rápida",
             ]
-        )
-        st.caption(
-            "Consulta e baixa de materiais. Cadastro completo de itens: **Admin → Almoxarifado**."
         )
 
         # ---- ESTOQUE (consulta) ----
@@ -3509,6 +3398,10 @@ elif perfil == "👨‍💼 Administrador":
                     relatorio_preventivas_vencidas,
                     relatorio_compras_pendentes,
                     relatorio_almox_abaixo_minimo,
+                    relatorio_sla_compliance,
+                    relatorio_preventiva_vs_corretiva,
+                    relatorio_tempo_aguardando_peca,
+                    relatorio_resumo_alertas,
                 )
             except Exception as e_rg:
                 st.error(f"Módulo de relatórios indisponível: {e_rg}")
@@ -3517,6 +3410,20 @@ elif perfil == "👨‍💼 Administrador":
             if relatorio_backlog_aberto is None:
                 st.info("Atualize o arquivo relatorios_gestao.py na pasta do app.")
             else:
+                # Resumo de alertas no topo — visão rápida para o gestor
+                try:
+                    df_alertas = relatorio_resumo_alertas(lista_ch, lista_eq, horas_backlog=48)
+                    if df_alertas is not None and not df_alertas.empty:
+                        row = df_alertas.iloc[0]
+                        a1, a2, a3, a4, a5 = st.columns(5)
+                        a1.metric("Backlog > 48h", int(row.get("Backlog > 48h") or 0))
+                        a2.metric("Prioridade Alta aberta", int(row.get("Alta aberta") or 0))
+                        a3.metric("Aguardando peça", int(row.get("Aguardando peça") or 0))
+                        a4.metric("Preventivas vencidas", int(row.get("Preventivas vencidas") or 0))
+                        a5.metric("Preventivas em 15 dias", int(row.get("Preventivas em 15 dias") or 0))
+                except Exception:
+                    pass
+
                 r_ops, r_tempo, r_equipe, r_prev, r_custo = st.tabs(
                     [
                         "🚨 Operação (agora)",
@@ -3580,57 +3487,69 @@ elif perfil == "👨‍💼 Administrador":
                                 relatorio_almox_abaixo_minimo(lista_almox),
                                 "Itens no ponto de reposição.",
                             )
+                    with st.container(border=True):
+                        _bloco(
+                            "Tempo aguardando peça",
+                            relatorio_tempo_aguardando_peca(lista_ch),
+                            "OS em Aguardando Peça ordenadas pelo tempo de espera.",
+                        )
 
                 with r_tempo:
                     c1, c2 = st.columns(2)
                     with c1:
                         with st.container(border=True):
                             _bloco(
-                                "SLA e MTTR por prioridade",
+                                "SLA e MTTR detalhado",
                                 relatorio_sla_e_mttr(lista_ch),
-                                "Tempo médio de reparo e aderência ao SLA.",
+                                "Tempo de reparo e se estourou o SLA por OS.",
                             )
                     with c2:
+                        with st.container(border=True):
+                            _bloco(
+                                "Conformidade SLA por prioridade",
+                                relatorio_sla_compliance(lista_ch),
+                                "% de chamados concluídos dentro do SLA.",
+                            )
+                    c3, c4 = st.columns(2)
+                    with c3:
                         with st.container(border=True):
                             _bloco(
                                 "Tempo de resposta",
                                 relatorio_tempo_resposta(lista_ch),
                                 "Da abertura até o início do atendimento.",
                             )
-                    c3, c4 = st.columns(2)
-                    with c3:
+                    with c4:
                         with st.container(border=True):
                             _bloco(
                                 "Resposta por prioridade",
                                 relatorio_resposta_por_prioridade(lista_ch),
                             )
-                    with c4:
-                        with st.container(border=True):
-                            df_mttr = relatorio_tendencia_mttr_mensal(lista_ch, meses=6)
-                            _bloco("Tendência MTTR (6 meses)", df_mttr)
-                            if df_mttr is not None and not getattr(df_mttr, "empty", True):
-                                try:
-                                    ycol = next(
-                                        (
-                                            c
-                                            for c in df_mttr.columns
-                                            if "mttr" in str(c).lower()
-                                            or "hora" in str(c).lower()
-                                            or "med" in str(c).lower()
-                                        ),
-                                        df_mttr.columns[-1],
-                                    )
-                                    xcol = df_mttr.columns[0]
-                                    fig_m = px.line(
-                                        df_mttr,
-                                        x=xcol,
-                                        y=ycol,
-                                        markers=True,
-                                        title="MTTR mensal",
-                                    )
-                                    st.plotly_chart(fig_m, width="stretch")
-                                except Exception:
-                                    pass
+                    with st.container(border=True):
+                        df_mttr = relatorio_tendencia_mttr_mensal(lista_ch, meses=6)
+                        _bloco("Tendência MTTR (6 meses)", df_mttr)
+                        if df_mttr is not None and not getattr(df_mttr, "empty", True):
+                            try:
+                                ycol = next(
+                                    (
+                                        c
+                                        for c in df_mttr.columns
+                                        if "mttr" in str(c).lower()
+                                        or "hora" in str(c).lower()
+                                        or "med" in str(c).lower()
+                                    ),
+                                    df_mttr.columns[-1],
+                                )
+                                xcol = df_mttr.columns[0]
+                                fig_m = px.line(
+                                    df_mttr,
+                                    x=xcol,
+                                    y=ycol,
+                                    markers=True,
+                                    title="MTTR mensal",
+                                )
+                                st.plotly_chart(fig_m, width="stretch")
+                            except Exception:
+                                pass
 
                 with r_equipe:
                     c1, c2 = st.columns(2)
@@ -3686,6 +3605,12 @@ elif perfil == "👨‍💼 Administrador":
                         _bloco(
                             "Top equipamentos reincidentes (90 dias)",
                             relatorio_top_reincidentes(lista_ch, dias=90, top=15),
+                        )
+                    with st.container(border=True):
+                        _bloco(
+                            "Preventiva vs Corretiva (90 dias)",
+                            relatorio_preventiva_vs_corretiva(lista_ch, dias=90),
+                            "Proporção de chamados preventivos e corretivos no período.",
                         )
 
                 with r_custo:
@@ -4132,75 +4057,32 @@ elif perfil == "👨‍💼 Administrador":
                         )
                         st.plotly_chart(fig_s, width="stretch")
                 with col2:
-                    setor_df = (
-                        df["setor"]
-                        .fillna("—")
-                        .astype(str)
-                        .str.strip()
-                        .replace({"": "—", "nan": "—"})
-                        .value_counts()
-                        .reset_index()
-                    )
-                    setor_df.columns = ["Setor", "Chamados"]
-                    setor_df = setor_df.sort_values("Chamados", ascending=True)
+                    setor_df = df["setor"].value_counts().reset_index()
+                    setor_df.columns = ["setor", "count"]
                     fig = px.bar(
                         setor_df,
-                        x="Chamados",
-                        y="Setor",
-                        orientation="h",
-                        title="Chamados por setor",
-                        text="Chamados",
+                        x="setor",
+                        y="count",
+                        title="Chamados por Setor",
                         color_discrete_sequence=["#ef4444"],
-                    )
-                    fig.update_traces(textposition="outside", cliponaxis=False)
-                    fig.update_layout(
-                        yaxis_title="",
-                        xaxis_title="Quantidade",
-                        height=max(280, 32 * len(setor_df) + 80),
-                        margin=dict(l=10, r=40, t=50, b=30),
                     )
                     st.plotly_chart(fig, width="stretch")
                     if "executante" in df.columns:
-                        tec_series = (
-                            df["executante"]
-                            .fillna("")
-                            .astype(str)
-                            .str.strip()
+                        tec_df = (
+                            df[df["executante"].fillna("").astype(str).str.len() > 0]["executante"]
+                            .value_counts()
+                            .reset_index()
                         )
-                        tec_series = tec_series[
-                            (tec_series != "")
-                            & (~tec_series.str.lower().isin(["nan", "none", "null", "—", "-"]))
-                        ]
-                        tec_df = tec_series.value_counts().reset_index()
-                        tec_df.columns = ["Técnico", "Chamados"]
+                        tec_df.columns = ["tecnico", "count"]
                         if not tec_df.empty:
-                            tec_df = tec_df.sort_values("Chamados", ascending=True)
                             fig_t = px.bar(
                                 tec_df,
-                                x="Chamados",
-                                y="Técnico",
-                                orientation="h",
-                                title="Chamados por técnico",
-                                text="Chamados",
-                                color="Chamados",
-                                color_continuous_scale="Oranges",
-                            )
-                            fig_t.update_traces(textposition="outside", cliponaxis=False)
-                            fig_t.update_layout(
-                                showlegend=False,
-                                coloraxis_showscale=False,
-                                yaxis_title="",
-                                xaxis_title="Quantidade de chamados",
-                                margin=dict(l=10, r=40, t=50, b=30),
-                                height=max(280, 36 * len(tec_df) + 80),
+                                x="tecnico",
+                                y="count",
+                                title="Chamados por Técnico",
+                                color_discrete_sequence=["#f59e0b"],
                             )
                             st.plotly_chart(fig_t, width="stretch")
-                            with st.expander("📋 Tabela — chamados por técnico", expanded=False):
-                                st.dataframe(
-                                    tec_df.sort_values("Chamados", ascending=False),
-                                    width="stretch",
-                                    hide_index=True,
-                                )
                 # Evolução temporal
                 df_t = df.copy()
                 df_t["data_hora_abertura"] = pd.to_datetime(
@@ -4376,10 +4258,7 @@ elif perfil == "👨‍💼 Administrador":
             if not df_custos.empty:
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Custo total peças", f"R$ {df_custos['Custo Peças (R$)'].sum():,.2f}")
-                c2.metric(
-                    "Horas-homem total",
-                    formatar_duracao_horas(float(df_custos["Horas-Homem"].sum() or 0)),
-                )
+                c2.metric("Horas-homem total", f"{df_custos['Horas-Homem'].sum():,.1f} h")
                 c3.metric("Equipamentos com histórico", len(df_custos))
                 with st.container(border=True):
                     st.dataframe(df_custos, width="stretch", hide_index=True)
@@ -5107,10 +4986,7 @@ elif perfil == "👨‍💼 Administrador":
                             st.caption(f"Excel indisponível: {e_x}")
 
         with tab5:
-            st.subheader("👥 Cadastro da equipe de manutenção")
-            st.caption(
-                "Técnicos ativos aparecem na fila de OS. Desative em vez de excluir quando possível."
-            )
+            st.subheader("👥 Cadastro da Equipe de Manutenção")
             funcoes = ["Técnico", "Líder Técnico", "Elétrico", "Mecânico", "Auxiliar"]
             edit_m = st.session_state.get("edit_membro")
 
@@ -5239,8 +5115,7 @@ elif perfil == "👨‍💼 Administrador":
                 st.info("Nenhum membro cadastrado.")
 
         with tab6:
-            st.subheader("🏭 Cadastro de setores / áreas")
-            st.caption("Setores usados na abertura de chamado e nos filtros dos relatórios.")
+            st.subheader("🏭 Cadastro de Setores / Áreas")
             busca_setor = st.text_input("🔍 Buscar setor", key="busca_setor")
             with st.container(border=True):
                 with st.form("cadastro_setor"):
@@ -5295,11 +5170,7 @@ elif perfil == "👨‍💼 Administrador":
                             st.rerun()
 
         with tab7:
-            st.subheader("🔧 Cadastro de equipamentos")
-            st.caption(
-                "Patrimônio, sazonalidade de preventiva e histórico. "
-                "PDF da preventiva e reincidência também em **Relatórios Gestão**."
-            )
+            st.subheader("🔧 Cadastro de Equipamentos")
             busca_equip = st.text_input("🔍 Buscar equipamento", key="busca_equip")
             try:
                 df_eq_x = equipamentos_para_df(st.session_state.equipamentos or [])
@@ -5461,42 +5332,18 @@ elif perfil == "👨‍💼 Administrador":
                         for hi, h in enumerate(hist_eq):
                             tipo = h.get("tipo") or "—"
                             data_h = h.get("data_manutencao") or "—"
-                            def _txt_h(v, default="—"):
-                                if v is None:
-                                    return default
-                                try:
-                                    if pd.isna(v):
-                                        return default
-                                except Exception:
-                                    pass
-                                s = str(v).strip()
-                                if not s or s.lower() in ("nan", "none", "null"):
-                                    return default
-                                return s
-
-                            def _num_h(v, default=0.0):
-                                try:
-                                    if v is None or (isinstance(v, float) and pd.isna(v)):
-                                        return default
-                                    return float(v)
-                                except Exception:
-                                    return default
-
-                            pecas_txt = _txt_h(h.get("pecas_trocadas"))
-                            custo_n = _num_h(h.get("custo_pecas"))
-                            horas_n = _num_h(h.get("horas_homem"))
                             st.markdown(
                                 f"""
                                 <div style="padding:8px 12px;margin:4px 0;border-radius:10px;
                                             border:1px solid #333;background:#111;border-left:3px solid #dc2626;">
-                                    <b style="color:#f1f1f1;">{_txt_h(tipo)}</b>
-                                    <span style="color:#a3a3a3;"> · {_txt_h(data_h)}</span><br/>
-                                    <span style="color:#ddd;">{_txt_h(h.get('descricao'), '')}</span><br/>
+                                    <b style="color:#f1f1f1;">{tipo}</b>
+                                    <span style="color:#a3a3a3;"> · {data_h}</span><br/>
+                                    <span style="color:#ddd;">{h.get('descricao') or ''}</span><br/>
                                     <span style="color:#a3a3a3;font-size:0.85rem;">
-                                        👤 {_txt_h(h.get('executante'))} ·
-                                        🔩 {pecas_txt} ·
-                                        💰 R$ {custo_n:,.2f} ·
-                                        ⏱ {formatar_duracao_horas(horas_n)}
+                                        👤 {h.get('executante') or '—'} ·
+                                        🔩 {h.get('pecas_trocadas') or '—'} ·
+                                        💰 R$ {float(h.get('custo_pecas') or 0):,.2f} ·
+                                        ⏱ {float(h.get('horas_homem') or 0):.1f} h
                                     </span>
                                 </div>
                                 """,
@@ -5505,20 +5352,13 @@ elif perfil == "👨‍💼 Administrador":
                             if (tipo or "").lower() == "preventiva":
                                 if _HAS_PDF and gerar_pdf_preventiva:
                                     try:
-                                        man_pdf = dict(h)
-                                        man_pdf["pecas_trocadas"] = pecas_txt if pecas_txt != "—" else ""
-                                        man_pdf["observacao"] = _txt_h(
-                                            h.get("observacao") or h.get("descricao"), ""
-                                        )
-                                        man_pdf["descricao"] = _txt_h(h.get("descricao"), "")
-                                        man_pdf["executante"] = _txt_h(h.get("executante"), "")
                                         pdf_bytes = gerar_pdf_preventiva(
                                             eq,
-                                            man_pdf,
+                                            h,
                                             local_instalado=eq.get("setor"),
-                                            observacoes_gerais=_txt_h(
-                                                h.get("observacao") or h.get("descricao"), ""
-                                            ),
+                                            observacoes_gerais=h.get("observacao")
+                                            or h.get("descricao")
+                                            or "",
                                         )
                                         st.download_button(
                                             "📄 Baixar / Imprimir Relatório Preventiva (PDF)",
@@ -5707,9 +5547,6 @@ elif perfil == "👨‍💼 Administrador":
 
         with tab_almox:
             st.subheader("📦 Almoxarifado — cadastro e estoque")
-            st.caption(
-                "Catálogo, maletas, movimentações e histórico. Itens críticos também em Relatórios Gestão."
-            )
             st.caption(
                 "Catálogo oficial de peças, lubrificantes, ferramentas etc. "
                 "Quando Compras marca um item como **Recebida**, a quantidade entra no estoque automaticamente."
@@ -5942,8 +5779,7 @@ elif perfil == "👨‍💼 Administrador":
                     )
 
         with tab8:
-            st.subheader("🖼️ Galeria de fotos")
-            st.caption("Fotos de abertura anexadas aos chamados (armazenamento local / Drive).")
+            st.subheader("🖼️ Galeria de Fotos")
             com_foto = [
                 c
                 for c in st.session_state.chamados
@@ -5962,8 +5798,7 @@ elif perfil == "👨‍💼 Administrador":
                 st.info("Nenhuma foto registrada ainda.")
 
         with tab9:
-            st.subheader("📥 Importar ordens de serviço")
-            st.caption("Importação em lote a partir de planilha Excel (.xlsx).")
+            st.subheader("📥 Importar Ordens de Serviço")
             with st.container(border=True):
                 uploaded_file = st.file_uploader(
                     "Selecione o arquivo MANUTENÇÃO CRN - 2026.xlsx", type=["xlsx"]
@@ -5982,10 +5817,7 @@ elif perfil == "👨‍💼 Administrador":
                         st.warning("Selecione o arquivo.")
 
         with tab_logs:
-            st.subheader("📡 Logs de integrações")
-            st.caption(
-                "WhatsApp, fotos na nuvem e webhooks. Use o teste de envio para validar o token."
-            )
+            st.subheader("📡 Logs de Integrações")
             st.caption(
                 "WhatsApp (Cloud API / gateway), fotos no Drive e webhooks. "
                 "Útil para conferir se o aviso automático ao solicitante saiu."

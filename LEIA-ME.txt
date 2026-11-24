@@ -1,29 +1,63 @@
 ================================================================
-  Gestão de Chamados — AUTOMAÇÕES CONSOLIDADAS
-  CRN GROUP — WhatsApp + Drive + PDF + Excel + Relatórios
+  Gestão de Chamados — Pacote limpo para Homologação / Git
+  Revisão 23/11/2026 — Automações + Relatórios Gestão
 ================================================================
-App: https://appmanutencaogit-xp3czwrvazfigblbmjwjr2.streamlit.app
 
-Leia também: AUTOMACOES.md (mapa completo das automações)
-             REVISAO.md   (estado técnico)
+App produção (referência):
+https://appmanutencaogit-xp3czwrvazfigblbmjwjr2.streamlit.app
 
-INSTALAÇÃO
-----------
+Homologação (exemplo):
+https://leandrocoelho84-appmanutencaohomologacao-ng8igkz8e8ur783d2xxfw.streamlit.app/
+
+Leia também:
+  REVISAO.md            → estado técnico e melhorias desta revisão
+  AUTOMACOES.md         → mapa das automações (WhatsApp, Drive, PDF, Excel)
+  DEPLOY_HOMOLOGACAO.md → checklist rápido de deploy no Streamlit Cloud
+
+----------------------------------------------------------------
+COMO SUBIR NO GIT / STREAMLIT CLOUD (homologação)
+----------------------------------------------------------------
+1. Extraia esta pasta (ou use o conteúdo como raiz do repositório).
+2. NÃO commit secrets.toml real nem banco_chamados.db de produção.
+3. Faça push para o repositório conectado ao Streamlit Cloud.
+4. No Streamlit Cloud → Settings → Secrets:
+   - Cole o conteúdo de .streamlit/secrets.toml.example
+   - Preencha SQLITECLOUD_URL (topo), WhatsApp e Drive.
+5. Redeploy / aguarde o app acordar.
+
+----------------------------------------------------------------
+INSTALAÇÃO LOCAL
+----------------------------------------------------------------
 1. Extraia esta pasta.
-2. Copie seu banco_chamados.db (se já existir).
+2. Copie seu banco_chamados.db (se já existir) para a raiz.
 3. pip install -r requirements.txt
-4. .streamlit/secrets.toml.example → secrets.toml (preencha)
+4. cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+   (preencha os valores)
 5. streamlit run app.py
 
+----------------------------------------------------------------
 MÓDULOS DE AUTOMAÇÃO
---------------------
+----------------------------------------------------------------
   whatsapp_api.py / integracoes.py   → aviso WhatsApp na conclusão
   google_midia.py + apps_script_*.gs → fotos no Google Drive
   gerar_relatorio_preventiva.py      → PDF preventiva automático
   exportar_excel.py                  → exportações .xlsx
-  relatorios_gestao.py               → MTTR, FTFR, backlog, produtividade
+  relatorios_gestao.py               → MTTR, FTFR, backlog, produtividade,
+                                       resumo alertas, SLA, preventiva vs corretiva
   relatorios_indices.py              → views e índices de gestão
   notificacoes.py                    → alertas no app
-  schema_gestao_melhorado.sql        → índices + views SQL
+  schema_gestao_melhorado.sql        → índices + views SQL (idempotente)
+
+----------------------------------------------------------------
+O QUE ESTÁ NESTA REVISÃO (23/11)
+----------------------------------------------------------------
+- Resumo de alertas no topo da aba Relatórios Gestão
+- Tempo aguardando peça
+- Conformidade SLA por prioridade
+- Preventiva vs Corretiva
+- Tendência MTTR com fallback abertura → início
+- Dual-Write Local ↔ SQLite Cloud (SQLITECLOUD_URL)
+- WhatsApp Cloud + Drive + PDF + Excel
 
 Não inclui secrets reais nem banco de produção.
+================================================================

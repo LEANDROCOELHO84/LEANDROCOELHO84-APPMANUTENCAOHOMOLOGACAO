@@ -471,12 +471,14 @@ def relatorio_first_time_fix(chamados: list[dict], dias: int = 90) -> pd.DataFra
 
 
 def relatorio_tendencia_mttr_mensal(chamados: list[dict], meses: int = 6) -> pd.DataFrame:
-    """MTTR médio por mês (últimos N meses)."""
+    """MTTR médio por mês (últimos N meses). Usa início ou abertura como referência."""
     rows = []
     for c in chamados or []:
         if str(c.get("status") or "") != "Concluído":
             continue
         ini = _dt(c.get("data_hora_inicio"))
+        if pd.isna(ini):
+            ini = _dt(c.get("data_hora_abertura"))
         fim = _dt(c.get("data_hora_conclusao"))
         if pd.isna(ini) or pd.isna(fim):
             continue
@@ -510,3 +512,141 @@ def relatorio_volume_mensal_setor(chamados: list[dict], meses: int = 6) -> pd.Da
     df = pd.DataFrame(rows)
     g = df.groupby(["Mês", "Setor"]).size().reset_index(name="Qtd")
     return g.sort_values(["Mês", "Qtd"], ascending=[True, False]).groupby("Mês").head(10)
+
+
+def relatorio_sla_compliance(chamados: list[dict], sla_min: dict | None = None) -> pd.DataFrame:
+    """Taxa de conformidade com SLA por prioridade (chamados concluídos)."""
+    sla_min = sla_min or {"Alta": 120, "Média": 480, "Baixa": 1440}
+    rows = []
+    for c in chamados or []:
+        if str(c.get("status") or "") != "Concluído":
+            continue
+        ini = _dt(c.get("data_hora_abertura"))
+        fim = _dt(c.get("data_hora_conclusao"))
+        if pd.isna(ini) or pd.isna(fim):
+            continue
+        minutos = max(0.0, (fim - ini).total_seconds() / 60.0)
+        pri = str(c.get("prioridade") or "Média")
+        alvo = float(sla_min.get(pri, sla_min.get("Média", 480)) or 480)
+        rows.append({"Prioridade": pri, "Dentro SLA": minutos <= alvo})
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    g = (
+        df.groupby("Prioridade")
+        .agg(total=("Dentro SLA", "count"), dentro=("Dentro SLA", "sum"))
+        .reset_index()
+    )
+    g["% SLA"] = (g["dentro"] / g["total"] * 100).round(1)
+    return g.sort_values("Prioridade")
+
+
+def relatorio_preventiva_vs_corretiva(chamados: list[dict], dias: int = 90) -> pd.DataFrame:
+    """Proporção de chamados preventivos vs corretivos no período."""
+    corte = datetime.now() - timedelta(days=dias)
+    prev = corr = 0
+    for c in chamados or []:
+        ab = _dt(c.get("data_hora_abertura"))
+        if pd.isna(ab) or ab.to_pydatetime() < corte:
+            continue
+        tipo = str(c.get("tipo") or "").lower()
+        desc = str(c.get("descricao") or "").lower()
+        if "prevent" in tipo or "prevent" in desc or "pm" in tipo:
+            prev += 1
+        else:
+            corr += 1
+    total = prev + corr
+    if total == 0:
+        return pd.DataFrame()
+    return pd.DataFrame(
+        [
+            {
+                "Período (dias)": dias,
+                "Preventivas": prev,
+                "Corretivas": corr,
+                "Total": total,
+                "% Preventiva": round(prev / total * 100, 1),
+                "% Corretiva": round(corr / total * 100, 1),
+            }
+        ]
+    )
+
+
+def relatorio_tempo_aguardando_peca(chamados: list[dict]) -> pd.DataFrame:
+    """OS em Aguardando Peça: há quanto tempo e peça solicitada."""
+    agora = datetime.now()
+    rows = []
+    for c in chamados or []:
+        st = str(c.get("status") or "")
+        if st != "Aguardando Peça":
+            continue
+        ini = _dt(c.get("data_hora_abertura"))
+        # tenta data de mudança de status se existir
+        muda = _dt(c.get("data_hora_status") or c.get("data_hora_inicio"))
+        ref = muda if not pd.isna(muda) else ini
+        horas = None
+        if not pd.isna(ref):
+            horas = round((agora - ref.to_pydatetime()).total_seconds() / 3600.0, 1)
+        rows.append(
+            {
+                "OS": c.get("id"),
+                "Equipamento": c.get("equipamento"),
+                "Setor": c.get("setor"),
+                "Prioridade": c.get("prioridade"),
+                "Técnico": c.get("executante") or "—",
+                "Peça": c.get("peca_solicitada") or c.get("peca") or "",
+                "Horas aguardando": horas,
+            }
+        )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.sort_values("Horas aguardando", ascending=False)
+
+
+def relatorio_resumo_alertas(
+    chamados: list[dict],
+    equipamentos: list[dict],
+    horas_backlog: int = 48,
+) -> pd.DataFrame:
+    """Resumo de alertas para o gestor: backlog velho, preventivas vencidas, peças paradas."""
+    agora = datetime.now()
+    hoje = agora.date()
+    backlog_velho = 0
+    pecas = 0
+    alta_aberta = 0
+    for c in chamados or []:
+        st = str(c.get("status") or "")
+        if st == "Concluído":
+            continue
+        if st == "Aguardando Peça":
+            pecas += 1
+        if str(c.get("prioridade") or "") == "Alta":
+            alta_aberta += 1
+        ini = _dt(c.get("data_hora_abertura"))
+        if not pd.isna(ini):
+            idade_h = (agora - ini.to_pydatetime()).total_seconds() / 3600.0
+            if idade_h >= horas_backlog:
+                backlog_velho += 1
+    vencidas = 0
+    vence_15 = 0
+    for e in equipamentos or []:
+        prox = _dt(e.get("proxima_preventiva"))
+        if pd.isna(prox):
+            continue
+        d = (prox.date() - hoje).days
+        if d < 0:
+            vencidas += 1
+        elif d <= 15:
+            vence_15 += 1
+    return pd.DataFrame(
+        [
+            {
+                "Backlog > {}h".format(horas_backlog): backlog_velho,
+                "Alta aberta": alta_aberta,
+                "Aguardando peça": pecas,
+                "Preventivas vencidas": vencidas,
+                "Preventivas em 15 dias": vence_15,
+            }
+        ]
+    )

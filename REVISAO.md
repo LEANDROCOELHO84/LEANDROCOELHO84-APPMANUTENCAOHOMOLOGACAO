@@ -1,8 +1,8 @@
-# Revisão do App Gestão de Chamados — out/2026 (atualização final)
+# Revisão do App Gestão de Chamados — 23/11/2026
 
 ## Estado atual (já implementado e revisado)
 
-A versão em `app_versao_revisada/` cobre os pedidos principais:
+A versão consolidada cobre os pedidos principais e as melhorias apuradas desde a última atualização (14/11/2026):
 
 - **Banco**: índices, tabelas `chamado_eventos`, `chamado_fotos`, `integracoes_log`.  
   Views: backlog, MTTR, tempo de resposta, peça parada, carga técnico, reincidência, preventivas vencidas, estoque crítico, custo manutenção, resposta por prioridade, conformidade preventiva.  
@@ -10,18 +10,23 @@ A versão em `app_versao_revisada/` cobre os pedidos principais:
   Script unificado: `schema_gestao_melhorado.sql` (idempotente).  
   Código formatado com black (line-length 100).
 
-- **Relatórios** (em `relatorios_gestao.py` + `relatorios_indices.py`):
-  - MTTR / SLA
+- **Relatórios** (em `relatorios_gestao.py` + `relatorios_indices.py` + aba **Relatórios Gestão**):
+  - MTTR / SLA detalhado
+  - **Conformidade SLA por prioridade** (% dentro do SLA)
   - Produtividade técnico (geral e por período)
   - Backlog aberto
   - Tempo de resposta
-  - Peças paradas
+  - Peças paradas + **Tempo aguardando peça** (ordenado por espera)
   - Carga por técnico
   - Conformidade preventiva
   - Top reincidentes
   - Resposta média por prioridade
   - Custo por equipamento
-  - **Novos**: First Time Fix Rate, Tendência MTTR mensal
+  - First Time Fix Rate
+  - Tendência MTTR mensal (melhorada: fallback abertura → início)
+  - Volume mensal por setor
+  - **Preventiva vs Corretiva** (proporção no período)
+  - **Resumo de alertas** no topo da aba (backlog > 48h, alta aberta, aguardando peça, preventivas vencidas / 15 dias)
 
 - **WhatsApp**: Cloud API oficial (Meta) + fallback gateway (Evolution/Z-API).  
   Aviso automático ao solicitante na conclusão + histórico de eventos (até 6).  
@@ -32,10 +37,20 @@ A versão em `app_versao_revisada/` cobre os pedidos principais:
 - **Fotos**: Google Drive (recomendado e estável).  
   - Service Account (`google_midia.py`)  
   - Webhook Apps Script (`apps_script_drive_fotos.gs`)  
-  **Google Fotos Library API NÃO serve** para álbum corporativo (desde abr/2025 a API só enxerga mídia criada pelo próprio app; scopes de leitura geral foram removidos; service accounts não são suportados).  
-  Drive + backup do Drive no Fotos da conta dona da pasta é o caminho correto.
+  **Google Fotos Library API NÃO serve** para álbum corporativo (desde abr/2025 a API só enxerga mídia criada pelo próprio app; scopes de leitura geral foram removidos; **service accounts não são suportados**).  
+  Drive + backup do Drive no Fotos da conta dona da pasta é o caminho correto e estável.
 
 - PDF preventiva individualizado por tipo de equipamento + Excel.
+
+## Melhorias desta revisão (desde 14/11)
+
+1. Pacote completo unificado (base com aba Relatórios Gestão + novos relatórios).
+2. Resumo de alertas no topo da aba Relatórios Gestão (métricas de atenção imediata).
+3. Relatório **Tempo aguardando peça** (operação).
+4. Relatório **Conformidade SLA por prioridade** (tempos).
+5. Relatório **Preventiva vs Corretiva** (preventivas).
+6. Tendência MTTR mais robusta (usa abertura quando não há data de início).
+7. Export Excel por bloco mantido em todos os relatórios.
 
 ## Recomendações práticas
 

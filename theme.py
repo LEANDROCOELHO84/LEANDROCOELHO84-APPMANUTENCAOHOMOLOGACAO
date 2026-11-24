@@ -380,69 +380,6 @@ def aplicar_tema():
         .prio-alta    { background: #78350f; color: #fde047; border: 1px solid #fbbf24; }
         .prio-media   { background: #3f3f46; color: #d1d5db; border: 1px solid #52525b; }
         .prio-baixa   { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
-
-        /* ===== Abas — disposição mais limpa ===== */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 0.35rem;
-            flex-wrap: wrap;
-            border-bottom: 1px solid #262626;
-            padding-bottom: 0.35rem;
-            margin-bottom: 0.75rem;
-        }
-        .stTabs [data-baseweb="tab"] {
-            border-radius: 10px 10px 0 0;
-            padding: 0.55rem 0.9rem;
-            font-weight: 600;
-            font-size: 0.88rem;
-            background: transparent;
-            color: #a3a3a3;
-        }
-        .stTabs [aria-selected="true"] {
-            background: rgba(239, 68, 68, 0.12) !important;
-            color: #fafafa !important;
-            border-bottom: 2px solid #ef4444 !important;
-        }
-        .stTabs [data-baseweb="tab-panel"] {
-            padding-top: 0.85rem;
-        }
-
-        /* ===== Métricas em grade ===== */
-        div[data-testid="stMetric"] {
-            background: linear-gradient(145deg, #141414, #101010);
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 0.75rem 0.9rem;
-            box-shadow: 0 4px 16px -10px rgba(0,0,0,0.7);
-        }
-        div[data-testid="stMetric"] label {
-            color: #a3a3a3 !important;
-            font-size: 0.8rem !important;
-        }
-        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-            font-size: 1.35rem !important;
-            color: #fafafa !important;
-        }
-
-        /* ===== Dataframes / tabelas ===== */
-        div[data-testid="stDataFrame"] {
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        /* ===== Espaçamento de seções ===== */
-        .block-container {
-            padding-top: 1.1rem;
-            padding-bottom: 2rem;
-        }
-        h3, .stMarkdown h3 {
-            margin-top: 0.4rem !important;
-            margin-bottom: 0.35rem !important;
-        }
-        .stCaption, [data-testid="stCaptionContainer"] {
-            margin-bottom: 0.65rem !important;
-            color: #8a8a8a !important;
-        }
     </style>
     """,
         unsafe_allow_html=True,

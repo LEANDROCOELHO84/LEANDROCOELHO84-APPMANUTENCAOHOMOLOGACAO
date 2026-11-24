@@ -1,0 +1,23 @@
+# Secrets e banco
+.streamlit/secrets.toml
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime
+logs/*
+!logs/.gitkeep
+fotos_chamados/*
+!fotos_chamados/.gitkeep
+__pycache__/
+*.pyc
+.Python
+.env
+.venv/
+venv/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
